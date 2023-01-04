@@ -1,0 +1,9 @@
+@startuml how
+"Client Server" -> "wpAuth Server" : access token request with control token and time data
+"wpAuth Server" -->  "Client Server" : time limited access token 
+"Client Server" -> "wpAuth Server" : login link request with access token 
+"wpAuth Server" --> "Client Server" : unique and time limited id for login 
+"Client Server" -> "Client Browser" : redirect to wordpress page which has shortcode with unique id 
+"Client Browser" -> "wpAuth Server" : wordpress page with shortcode and unique id generates last redirect code
+"wpAuth Server" -> "Client Browser" : registers and login as user that provided from server and redirects 
+@enduml
