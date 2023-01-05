@@ -96,8 +96,7 @@ class wpAuth extends WP_REST_Controller
 
                 if ($existingUser === false) {
                     $newUser = [
-                        'user_login' =>
-                            $userNamePrefix . (string) $userData['name'],
+                        'user_login' => $userNamePrefix . $userData['name'],
                         'user_pass' => $this->generatePass($userData['email']),
                         'user_email' => (string) $userData['email'],
                         'display_name' => (string) $userData['name'],
@@ -325,7 +324,7 @@ class wpAuth extends WP_REST_Controller
         $uniqueId = $this->uniqidReal();
         set_transient(
             'wpAuthByOrcnd' . $uniqueId,
-            [$params['email'], $params['name']],
+            ['email' => $params['email'], 'name' => $params['name']],
             $this->cacheTime
         );
         return new WP_REST_Response(
