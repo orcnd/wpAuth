@@ -115,6 +115,8 @@ class wpAuth extends WP_REST_Controller
                     false
                 );
 
+                delete_transient('wpAuthByOrcnd' . $token);
+
                 $redirectUrl = get_option('wpAuthByOrcndSettingRedirectUrl');
 
                 return "<p><a href=\"{$redirectUrl}\">Click Here to Redirect</a></p><script> window.location=\"{$redirectUrl}\" </script>";
