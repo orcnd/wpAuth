@@ -1,21 +1,21 @@
 <?php
 /*
 Plugin Name:  WPAuth
-Plugin URI:   https://github.com/orcnd 
+Plugin URI:   https://github.com/orcnd
 Description:  A simple plugin to authenticate users against a WordPress database.
 Version:      1.0
-Author:       orcnd 
+Author:       orcnd
 Author URI:   https://github.com/orcnd
 License:      GPL2
 License URI:  https://www.gnu.org/licenses/gpl-2.0.html
 */
 if (!class_exists('WP_REST_Controller')) {
-    require_once ABSPATH .
+    include_once ABSPATH .
         'wp-content/plugins/rest-api/lib/endpoints/' .
         '/class-wp-rest-controller.php';
 }
 if (!class_exists('WP_REST_Taxonomies_Controller')) {
-    require_once ABSPATH .
+    include_once ABSPATH .
         'wp-content/plugins/rest-api/lib/endpoints/' .
         '/class-wp-rest-terms-controller.php';
 }
@@ -34,7 +34,7 @@ class wpAuth extends WP_REST_Controller
     /**
      * @var string $controlTokenExpireTime control token expire time in seconds
      */
-    var $controlTokenExpireTime = 10;
+    var $controlTokenExpireTime = 20;
 
     /**
      * construct class
@@ -81,7 +81,11 @@ class wpAuth extends WP_REST_Controller
      */
     function shortcode()
     {
+        @ob_end_clean();
         $token = isset($_GET['token']) ? $_GET['token'] : '';
+        if (is_user_logged_in())  {
+            $this->redirectToBase();
+        }
         if ($token !== '') {
             $userData = get_transient('wpAuthByOrcnd' . $token);
             if ($userData !== false) {
@@ -89,9 +93,10 @@ class wpAuth extends WP_REST_Controller
                     'wpAuthByOrcndSettingUsernamePrefix'
                 );
 
+
                 $existingUser = get_user_by(
-                    'login',
-                    $userNamePrefix . $userData['name']
+                    'email',
+                    (string) $userData['email'],
                 );
 
                 if ($existingUser === false) {
@@ -101,31 +106,35 @@ class wpAuth extends WP_REST_Controller
                         'user_email' => (string) $userData['email'],
                         'display_name' => (string) $userData['name'],
                     ];
-                    wp_insert_user($newUser);
+                    $id=wp_insert_user($newUser);
+                    $loginData=[
+                        'id'=> $id,
+                        'login' => $newUser['user_login']
+                    ];
+                }else{
+                    $loginData=[
+                        'id' => $existingUser->ID,
+                        'login' => $existingUser->user_login
+                    ];
                 }
 
-                $user = wp_signon(
-                    [
-                        'user_login' =>
-                            $userNamePrefix . (string) $userData['name'],
-                        'user_password' => $this->generatePass(
-                            $userData['email']
-                        ),
-                    ],
-                    false
-                );
+                //login
+                wp_set_current_user($loginData['id'], $loginData['login']);
+                wp_set_auth_cookie($loginData['id']);
+//                do_action('wp_login', $loginData['login']);
 
                 delete_transient('wpAuthByOrcnd' . $token);
-
-                $redirectUrl = get_option('wpAuthByOrcndSettingRedirectUrl');
-
-                return "<p><a href=\"{$redirectUrl}\">Click Here to Redirect</a></p><script> window.location=\"{$redirectUrl}\" </script>";
-            } else {
-                return '<p>invalid token</p>';
             }
-        } else {
-            return '<p>invalid req</p>';
         }
+
+        $this->redirectToBase();
+    }
+
+    function redirectToBase()
+    {
+        $redirectUrl = get_option('wpAuthByOrcndSettingRedirectUrl');
+        wp_redirect($redirectUrl);
+        exit;
     }
     /**
      * generate password for users
@@ -134,8 +143,7 @@ class wpAuth extends WP_REST_Controller
      */
     function generatePass($e)
     {
-        $passwordSalt = get_option('wpAuthByOrcndSettingPasswordSalt');
-        return md5(((string) $e) . $passwordSalt);
+        return md5(((string)$e).'qwjas;ol2l;fg94k;ljsd');
     }
 
     /**
@@ -167,7 +175,7 @@ class wpAuth extends WP_REST_Controller
     /**
      * field output for admin page
      *
-     * @param array $args
+     * @param  array $args
      * @return void
      */
     function fieldCallback(array $arg)
@@ -214,7 +222,8 @@ class wpAuth extends WP_REST_Controller
      */
     public function restInit()
     {
-        register_rest_route($this->namespace, '/token', [
+        register_rest_route(
+            $this->namespace, '/token', [
             'methods' => 'POST',
             'callback' => [$this, 'routeToken'],
             'args' => [
@@ -228,9 +237,11 @@ class wpAuth extends WP_REST_Controller
                     'required' => true,
                 ],
             ],
-        ]);
+            ]
+        );
 
-        register_rest_route($this->namespace, '/generateLogin', [
+        register_rest_route(
+            $this->namespace, '/generateLogin', [
             'methods' => 'POST',
             'callback' => [$this, 'routeLogin'],
 
@@ -245,13 +256,14 @@ class wpAuth extends WP_REST_Controller
                     'required' => true,
                 ],
             ],
-        ]);
+            ]
+        );
     }
 
     /**
      * check api working
      *
-     * @param WP_REST_Request $request Full data about the request.
+     * @param  WP_REST_Request $request Full data about the request.
      * @return WP_Error|WP_REST_Response
      */
     public function routeToken($request)
@@ -259,9 +271,8 @@ class wpAuth extends WP_REST_Controller
         $params = $request->get_params();
         $controlTokenTime = strtotime($params['time']);
         //check if token expired
-        if (
-            $controlTokenTime > time() + $this->controlTokenExpireTime ||
-            $controlTokenTime < time() - $this->controlTokenExpireTime
+        if ($controlTokenTime > time() + $this->controlTokenExpireTime
+            || $controlTokenTime < time() - $this->controlTokenExpireTime
         ) {
             return new WP_REST_Response(
                 [
@@ -286,7 +297,6 @@ class wpAuth extends WP_REST_Controller
             set_transient(
                 'wpAuthByOrcnd' . $accessToken,
                 [$params['email'], $accessTime],
-
                 $this->cacheTime
             );
             return new WP_REST_Response(
@@ -306,7 +316,7 @@ class wpAuth extends WP_REST_Controller
     /**
      * create login link for user
      *
-     * @param WP_REST_Request $request Full data about the request.
+     * @param  WP_REST_Request $request Full data about the request.
      * @return WP_Error|WP_REST_Response
      */
     function routeLogin($request)
@@ -340,9 +350,9 @@ class wpAuth extends WP_REST_Controller
     /**
      * create access token for email
      *
-     * @param string $email email address
-     * @param string $time time of token
-     * @param string $subject subject of token
+     * @param  string $email   email address
+     * @param  string $time    time of token
+     * @param  string $subject subject of token
      * @return string access token
      */
     function createAccessToken($email, $time, $subject = '')
@@ -354,7 +364,7 @@ class wpAuth extends WP_REST_Controller
     /**
      * generates unique id (source: https://www.php.net/manual/en/function.uniqid.php)
      *
-     * @param int $lenght lenght of id
+     * @param  int $lenght lenght of id
      * @return string
      */
     function uniqidReal($lenght = 13)
